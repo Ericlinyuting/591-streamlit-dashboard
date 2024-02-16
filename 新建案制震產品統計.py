@@ -15,12 +15,12 @@ NON_AST_data = ALL_data[~ALL_data["制震宅"]]
 # 利用json模組，讀入geojson檔案：
 # 讀取geojson
 with open('asset/mapdata202301070205/COUNTY_MOI_1090820.geojson', encoding='utf8') as response:
-    mapGeo = json.load(response)
-def Choropleth_Data(df):
-     # 利用json模組，讀入geojson檔案：
-    # 讀取geojson
-    with open('asset/mapdata202301070205/COUNTY_MOI_1090820.geojson', encoding='utf8') as response:
-        mapGeo = json.load(response)
+    mapGeo_city = json.load(response)
+
+with open('asset/鄉鎮市區界線(TWD97經緯度)1120928/TOWN_MOI_1120825.geojson', encoding='utf8') as response:
+    mapGeo_town = json.load(response)
+
+def Choropleth_Data_County(df):
     #Choropleth Map資料處理流程
     df["單價"] = pd.to_numeric(df['單價'], errors='coerce')
     df_Price = df[df['單位'] == '萬/坪'].groupby('縣市')['單價'].agg('mean').reset_index()
@@ -29,8 +29,23 @@ def Choropleth_Data(df):
 
     #此處依據geojson檔案內記載的鄉鎮市區清單資訊，建立一個Pandas表格，待會要將此表做為主表，把價格資料併進來：
     # 依據圖資資料建立鄉鎮市區清單
-    country_df = pd.DataFrame.from_dict([i['properties'] for i in mapGeo['features']])
+    country_df = pd.DataFrame.from_dict([i['properties'] for i in mapGeo_city['features']])
     county_price_table = pd.merge(country_df, df_Price, left_on='COUNTYNAME', right_on='縣市', how='left')
+    return county_price_table
+
+def Choropleth_Data_Town(df):
+    #Choropleth Map資料處理流程
+    df["鄉鎮市區"]=df["縣市"]+df["區域"]
+    df["單價"] = pd.to_numeric(df['單價'], errors='coerce')
+    df_Price = df[df['單位'] == '萬/坪'].groupby('鄉鎮市區')['單價'].agg('mean').reset_index()
+    df_Price["鄉鎮市區"] = df_Price["鄉鎮市區"].str.replace("台", "臺")
+    df_Price["單價"] = round(df_Price["單價"],1)
+
+    #此處依據geojson檔案內記載的鄉鎮市區清單資訊，建立一個Pandas表格，待會要將此表做為主表，把價格資料併進來：
+    # 依據圖資資料建立鄉鎮市區清單
+    country_df = pd.DataFrame.from_dict([i['properties'] for i in mapGeo_town['features']])
+    country_df["CityTown"] = country_df["COUNTYNAME"]+country_df["TOWNNAME"]
+    county_price_table = pd.merge(country_df, df_Price, left_on='CityTown', right_on='鄉鎮市區', how='left')
     return county_price_table
 
 def Brand_count(product,AST_data):
@@ -88,12 +103,12 @@ def main():
         st.plotly_chart(AST_Pie)
     st.markdown("<hr/>", unsafe_allow_html=True)
     #region chropleth map
-    row2 = st.columns(2)
+    row2 = st.columns(3)
     with row2[0]:
-        NON_AST_country_Price_table = Choropleth_Data(NON_AST_data)
+        NON_AST_country_Price_table = Choropleth_Data_County(NON_AST_data)
         # 繪製地坪單價地圖
         NON_AST_choropleth_map = px.choropleth_mapbox(NON_AST_country_Price_table,                                                # 資料表
-                                geojson=mapGeo,                                    # 地圖資訊
+                                geojson=mapGeo_city ,                                    # 地圖資訊
                                 locations='COUNTYCODE',                           # df要對應geojson的id名稱
                                 featureidkey='properties.COUNTYCODE',             # geojson對應df的id名稱
                                 color='單價',                                      # 顏色區分對象
@@ -111,10 +126,10 @@ def main():
         NON_AST_choropleth_map.update_layout(margin={'r':0, 't':0, 'l':0, 'b':0},coloraxis_colorbar=dict(title='單價(萬/坪)'))
         st.plotly_chart(NON_AST_choropleth_map,use_container_width=True)
     with row2[1]:
-        AST_country_Price_table=Choropleth_Data(AST_data)
+        AST_country_Price_table=Choropleth_Data_County(AST_data)
         # 繪製地坪單價地圖
         AST_choropleth_map = px.choropleth_mapbox(AST_country_Price_table,                                                # 資料表
-                                geojson=mapGeo,                                    # 地圖資訊
+                                geojson=mapGeo_city,                                    # 地圖資訊
                                 locations='COUNTYCODE',                           # df要對應geojson的id名稱
                                 featureidkey='properties.COUNTYCODE',             # geojson對應df的id名稱
                                 color='單價',                                      # 顏色區分對象
@@ -131,6 +146,27 @@ def main():
         AST_choropleth_map.update_layout(title='全台制震宅新建案地坪單價圖',title_x=0.02 ,title_y=0.95)  # 調整 title_x 和 title_y
         AST_choropleth_map.update_layout(margin={'r':0, 't':0, 'l':0, 'b':0},coloraxis_colorbar=dict(title='單價(萬/坪)'))
         st.plotly_chart(AST_choropleth_map,use_container_width=True)
+    with row2[2]:
+        ALL_town_Price_table=Choropleth_Data_Town(ALL_data)
+        # 繪製地坪單價地圖
+        ALL_town_choropleth_map = px.choropleth_mapbox(ALL_town_Price_table,                                                # 資料表
+                                geojson=mapGeo_town,                                    # 地圖資訊
+                                locations='TOWNCODE',                           # df要對應geojson的id名稱
+                                featureidkey='properties.TOWNCODE',             # geojson對應df的id名稱
+                                color='單價',                                      # 顏色區分對象
+                                color_continuous_scale='YlOrRd',                  # 設定呈現的顏色
+                                range_color=(round(np.nanmin(ALL_town_Price_table['單價'])),    # 顏色的值域範圍
+                                                round(np.nanmax(ALL_town_Price_table['單價']))),   
+                                mapbox_style='carto-positron',                    # mapbox地圖格式
+                                zoom=6,                                           # 地圖縮放大小: 數字愈大放大程度愈大
+                                center={'lat': 23.5832, 'lon': 120.5825},         # 地圖中心位置: 此處設定台灣地理中心碑經緯度
+                                opacity=0.7,                                               # 設定顏色區塊的透明度 數值愈大愈不透明
+                                hover_data=['鄉鎮市區', "單價"]  # 設定游標指向資訊
+                                )
+        # 在地圖上加上標題
+        ALL_town_choropleth_map.update_layout(title='全台鄉鎮市新建案地坪單價圖',title_x=0.02 ,title_y=0.95)  # 調整 title_x 和 title_y
+        ALL_town_choropleth_map.update_layout(margin={'r':0, 't':0, 'l':0, 'b':0},coloraxis_colorbar=dict(title='單價(萬/坪)'))
+        st.plotly_chart(ALL_town_choropleth_map,use_container_width=True)
     #endregion
     st.markdown("<hr/>", unsafe_allow_html=True)
     row3 = st.columns(3)
